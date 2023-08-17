@@ -1,0 +1,13 @@
+.DS_Store
+/.idea/
+
+# Random directories containing datasets
+dataset
+dataset/kidney
+dataset/sartorius-cell-instance-segmentation
+dataset/livecell.py
+demos
+
+#
+flagged
+results
