@@ -21,10 +21,10 @@ from utils import (
 LEARNING_RATE = 1e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # DEVICE = "cpu"
-BATCH_SIZE = 32
+BATCH_SIZE = 16
 # BATCH_SIZE = 32
 # BATCH_SIZE = 64
-NUM_EPOCHS = 350
+NUM_EPOCHS = 1000
 SAVE_CHECKPOINT_EVERY = 5
 NUM_WORKERS = 2
 # IMAGE_HEIGHT = 160  # 520 originally
@@ -127,6 +127,7 @@ def main(model_architecture='UNET'):
     # final save
     if NUM_EPOCHS % SAVE_CHECKPOINT_EVERY != 0:
         save_checkpoint(checkpoint, filename="checkpoints/my_checkpoint.pth.tar")
+        save_predictions_as_imgs(val_loader, model, folder="saved_images/", device=DEVICE)
 
     metric_tuples = [
         (accuracy_list, 'Accuracy'),

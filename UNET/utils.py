@@ -13,7 +13,7 @@ from datetime import datetime
 
 
 def save_checkpoint(state, filename="my_checkpoint.pth.tar"):
-    print("=> Saving checkpoint")
+    print(f"=> Saving checkpoint at {filename}")
     torch.save(state, filename)
 
 
@@ -196,9 +196,9 @@ def get_transforms(model_architecture='UNET', img_height=520, img_width=696):
                     A.RandomCrop(img_height, img_width),
                     A.HorizontalFlip(p=0.5),
                     A.VerticalFlip(p=0.1),
-                    A.RandomBrightness(limit=0.2, p=0.5),
                     A.CoarseDropout(min_holes=17, max_holes=35, p=0.5),
                     A.GridDistortion(num_steps=4, distort_limit=0.3, p=0.3, border_mode=4),
+                    A.RandomBrightnessContrast(brightness_limit=(-0.3, 0.6), contrast_limit=0.1, p=0.5),
                     A.Normalize(
                         mean=[0.485, 0.456, 0.406],
                         std=[0.229, 0.224, 0.225]
