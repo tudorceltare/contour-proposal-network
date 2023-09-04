@@ -1,6 +1,4 @@
 import gradio as gr
-import celldetection as cd
-from celldetection.models import CpnU22
 from PIL import Image
 import cv2
 import torch
