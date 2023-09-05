@@ -108,6 +108,7 @@ def split_and_process_img(img, h, w, model, transform, device='cuda'):
     pad_height = rows * h - original_h
     pad_width = cols * w - original_w
 
+    # image should be np.array of shape (h, w)
     padded_img = np.pad(img, ((0, pad_height), (0, pad_width)), mode='constant')
     sub_images = padded_img.reshape(rows, h, cols, w)
     sub_images = sub_images.swapaxes(1, 2).reshape(-1, h, w)  # Reshape and combine
