@@ -44,7 +44,6 @@ def format_input_image(img, model_architecture):
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         img = np.array(img)
     np.repeat(img[:, :, np.newaxis], 3, axis=2)
-    print(f'img.shape: {img.shape}')
     return img
 
 
@@ -57,9 +56,7 @@ def make_prediction(img, model_architecture):
             transform = models[0]['transform']
             copy_img = np.copy(img)
             img = transform(image=img)['image']
-            print(f'img.shape: {img.shape}')
             test_img = torch.from_numpy(img).unsqueeze(0).unsqueeze(0).to(device).float()
-            print(f'test_img.shape: {test_img.shape}')
             model.eval()
             with torch.no_grad():
                 preds = torch.sigmoid(model(test_img))
@@ -126,7 +123,7 @@ def load_models(device="cuda"):
         }
     ]
     for model in models:
-        load_checkpoint(torch.load(model["checkpoint"]), model["model"])
+        load_checkpoint(torch.load(model["checkpoint"], map_location=device), model["model"])
     return models
 
 

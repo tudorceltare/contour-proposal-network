@@ -5,8 +5,6 @@
 dataset
 dataset/kidney
 dataset/sartorius-cell-instance-segmentation
-dataset/livecell.py
-demos
 
 # Directories where random test images are saved
 flagged
