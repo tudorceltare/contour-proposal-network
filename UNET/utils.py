@@ -129,21 +129,6 @@ def split_and_process_img(img, h, w, model, transform, device='cuda'):
     return final_prediction
 
 
-def save_predictions_as_imgs(loader, model, folder="saved_images/", device="cuda"):
-    model.eval()
-    for idx, (x, y) in enumerate(loader):
-        x = x.to(device=device)
-        with torch.no_grad():
-            preds = torch.sigmoid(model(x))
-            preds = (preds > 0.5).float()
-        torchvision.utils.save_image(
-            preds, f"{folder}/pred_{idx}.png"
-        )
-        torchvision.utils.save_image(y.unsqueeze(1), f"{folder}{idx}.png")
-
-    model.train()
-
-
 def get_prediction(image, model, transform, device='cuda'):
     model = model.to(device=device)
     model.eval()
@@ -159,6 +144,76 @@ def get_prediction(image, model, transform, device='cuda'):
 
     model.train()
     return prediction
+
+
+# get prediction for a batch of images, the shape of the image is (batch_size, 3, h, w)
+def split_and_process_loader_batch(batch, h, w, model, device='cuda'):
+    batch = np.transpose(batch, (0, 3, 1, 2))
+    final_batch_prediction = []
+    for idx, rgb_img in enumerate(batch):
+        sub_batches = []
+        original_h, original_w = rgb_img.shape[1:3]
+
+        rows = math.ceil(original_h / h)
+        cols = math.ceil(original_w / w)
+
+        pad_height = rows * h - original_h
+        pad_width = cols * w - original_w
+        for channel in rgb_img:
+
+            padded_channel = np.pad(channel, ((0, pad_height), (0, pad_width)), mode='constant')
+            sub_channels = padded_channel.reshape(rows, h, cols, w)
+            sub_channels = sub_channels.swapaxes(1, 2).reshape(-1, h, w)  # Reshape and combine
+            sub_batches.append(sub_channels)
+        # sub_batches.shape: (3, len(sub_channels), h, w)
+        sub_batches = np.array(sub_batches)
+        # sub_batches = np.transpose(sub_batches, (1, 0, 2, 3))
+        sub_predictions = get_prediction_for_batch(sub_batches, model, device=device)
+        sub_predictions = sub_predictions.squeeze(1)
+        # sub_predictions.shape should be: (len(sub_channels), h, w) since predicted mask is binary
+        final_prediction = []
+
+        if isinstance(sub_predictions, torch.Tensor):
+            sub_predictions = [tensor.cpu().numpy() for tensor in sub_predictions]
+        channel_predictions_grid = np.array(sub_predictions).reshape(rows, cols, h, w)
+        # Combine the processed sub-images to reconstruct the final image
+        final_channel_prediction = (channel_predictions_grid.swapaxes(1, 2)
+                                    .reshape(original_h + pad_height,original_w + pad_width))
+        # Crop the final image to the original dimensions
+        final_channel_prediction = final_channel_prediction[:original_h, :original_w]
+
+        final_prediction.append(final_channel_prediction)
+
+        final_batch_prediction.append(np.array(final_prediction))
+    return np.array(final_batch_prediction)
+
+
+def get_prediction_for_batch(batch, model, device='cuda'):
+    model = model.to(device=device)
+    model.eval()
+    input_batch = torch.from_numpy(batch).to(device=device)
+    input_batch = input_batch.permute(1, 0, 2, 3)
+    with torch.no_grad():
+        predictions = model(input_batch)
+        predictions = torch.sigmoid(predictions)
+        predictions = (predictions > 0.5).float()
+    model.train()
+    return predictions
+
+
+def save_predictions_as_imgs(loader, model, folder="saved_images/", device="cuda"):
+    model.eval()
+    for idx, (x, y) in enumerate(loader):
+        x = x.to(device=device)
+        with torch.no_grad():
+            preds = torch.sigmoid(model(x))
+            preds = (preds > 0.5).float()
+        torchvision.utils.save_image(
+            preds, f"{folder}/pred_{idx}.png"
+        )
+        torchvision.utils.save_image(y.unsqueeze(1), f"{folder}{idx}.png")
+
+    model.train()
 
 
 def get_transforms(model_architecture='UNET', img_height=520, img_width=696):

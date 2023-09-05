@@ -3,10 +3,11 @@ import albumentations as A
 import numpy as np
 from albumentations.pytorch import ToTensorV2
 from torch.utils.data import DataLoader
-from utils import load_checkpoint, split_and_process_img
+from utils import load_checkpoint, split_and_process_img, split_and_process_loader_batch
 from dataset import BBBC_039_data
 from model import UNET, ResUNET
 from tqdm import tqdm
+from matplotlib import pyplot as plt
 
 
 def evaluate_iou_threshold(loader, model, device='cuda'):
@@ -47,13 +48,19 @@ def evaluate_test_set(loader, model, device='cuda', model_architecture='UNET', t
             if model_architecture == 'UNET':
                 preds = torch.sigmoid(model(x.to(device)))
                 preds = (preds > 0.5).float()
+                # plt.title('Original')
+                # plt.imshow(x.squeeze(0).squeeze(0).cpu().numpy())
+                # plt.show()
+                # plt.title('Prediction')
+                # plt.imshow(preds.squeeze(0).squeeze(0).cpu().numpy())
+                # plt.show()
+                # return
             elif model_architecture == 'ResUNET':
                 # print(f'x.shape: {x.shape}')
-                x = x.squeeze(0).cpu().numpy()
-                x = x[..., 0]
+                # x.shape: torch.Size([batch_size, 3, h, w])
                 # print(f'x.shape: {x.shape}')
-                preds = split_and_process_img(x, 256, 256, model=model, transform=transform, device=device)
-                preds = torch.from_numpy(preds).unsqueeze(0).unsqueeze(0).to(device).float()
+                preds = split_and_process_loader_batch(x, 256, 256, model=model, device=device)
+                preds = torch.from_numpy(preds).to(device).float()
             # calculate IoU score
             intersection = torch.logical_and(y.to(device), preds)
             union = torch.logical_or(y.to(device), preds)
@@ -74,35 +81,19 @@ def evaluate_test_set(loader, model, device='cuda', model_architecture='UNET', t
     model.train()
     return accuracy_avg, iou_avg, dice_avg
 
+
 def main(model_architecture='UNET'):
     # Hyperparameters
-    LEARNING_RATE = 1e-4
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    # DEVICE = "cpu"
-    BATCH_SIZE = 16
-    # BATCH_SIZE = 32
-    # BATCH_SIZE = 64
-    NUM_EPOCHS = 150
-    SAVE_CHECKPOINT_EVERY = 5
     NUM_WORKERS = 2
-    # IMAGE_HEIGHT = 160  # 520 originally
-    IMAGE_HEIGHT = 520  # 520 originally
-    # IMAGE_WIDTH = 240   # 696 originally
-    IMAGE_WIDTH = 696  # 696 originally
     PIN_MEMORY = True
-    LOAD_MODEL = False
-    TRAIN_IMG_DIR = '../dataset/BBBC_039_formatted/train/images'
-    TRAIN_MASK_DIR = '../dataset/BBBC_039_formatted/train/boundary_labels'
-    VAL_IMG_DIR = '../dataset/BBBC_039_formatted/val/images'
-    VAL_MASK_DIR = '../dataset/BBBC_039_formatted/val/boundary_labels'
-    TEST_IMG_DIR = '../dataset/BBBC_039_formatted/test/images'
-    TEST_MASK_DIR = '../dataset/BBBC_039_formatted/test/boundary_labels'
-
-    checkpoint = torch.load('checkpoints/binary_contour_1000epochs_ResUNET_AUGMENTED.pth.tar', map_location=DEVICE)
+    TEST_IMG_DIR = '../dataset/BBBC_039_formatted/train/images'
+    TEST_MASK_DIR = '../dataset/BBBC_039_formatted/train/boundary_labels'
 
     match model_architecture:
         case 'UNET':
             model = UNET(in_channels=1, out_channels=1).to(DEVICE)
+            checkpoint = torch.load('checkpoints/binary_contour_150epochs_UNET.pth.tar', map_location=DEVICE)
             load_checkpoint(checkpoint, model)
             test_transform = A.Compose([
                 # A.Resize(height=IMAGE_HEIGHT, width=IMAGE_WIDTH),
@@ -113,9 +104,20 @@ def main(model_architecture='UNET'):
                 ),
                 ToTensorV2()
             ])
+            test_ds = BBBC_039_data(
+                image_dir=TEST_IMG_DIR,
+                mask_dir=TEST_MASK_DIR,
+                transform=test_transform,
+            )
         case 'ResUNET':
-            encoder = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=True)
+            encoder = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=False)
             model = ResUNET(encoder=encoder, out_channels=1).to(DEVICE)
+            checkpoint = torch.load('checkpoints/binary_contour_1000epochs_ResUNET_AUGMENTED.pth.tar',
+                                    map_location=DEVICE)
+            # checkpoint = torch.load('checkpoints/binary_contour_350epochs_ResUNET_AUGMENTED.pth.tar',
+            #                         map_location=DEVICE)
+            # checkpoint = torch.load('checkpoints/binary_contour_350epochs_ResUNET.tar',
+            #                         map_location=DEVICE)
             load_checkpoint(checkpoint, model)
             test_transform = A.Compose([
                 A.Normalize(
@@ -123,23 +125,14 @@ def main(model_architecture='UNET'):
                     std=[0.229, 0.224, 0.225]
                 ),
             ])
+            test_ds = BBBC_039_data(
+                image_dir=TEST_IMG_DIR,
+                mask_dir=TEST_MASK_DIR,
+                transform=test_transform,
+                convert_to_rgb=True,
+            )
         case _:
             raise NotImplementedError(f'Unknown model architecture: {model_architecture}')
-    if model_architecture == 'UNET':
-        test_ds = BBBC_039_data(
-            image_dir=TEST_IMG_DIR,
-            mask_dir=TEST_MASK_DIR,
-            transform=test_transform,
-        )
-    elif model_architecture == 'ResUNET':
-        test_ds = BBBC_039_data(
-            image_dir=TEST_IMG_DIR,
-            mask_dir=TEST_MASK_DIR,
-            transform=test_transform,
-            convert_to_rgb=True,
-        )
-    else:
-        raise NotImplementedError(f'Unknown model architecture: {model_architecture}')
 
     test_loader = DataLoader(
         test_ds,

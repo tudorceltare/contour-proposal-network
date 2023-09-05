@@ -8,7 +8,7 @@ import numpy as np
 from PIL import Image
 import albumentations as A
 from UNET.model import UNET, ResUNET
-from UNET.utils import load_checkpoint, split_and_process_img
+from UNET.utils import load_checkpoint, split_and_process_img, split_and_process_loader_batch
 
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -44,6 +44,7 @@ def format_input_image(img, model_architecture):
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         img = np.array(img)
     np.repeat(img[:, :, np.newaxis], 3, axis=2)
+    print(f'img.shape: {img.shape}')
     return img
 
 
@@ -54,6 +55,7 @@ def make_prediction(img, model_architecture):
         case 'UNET':
             model = models[0]["model"]
             transform = models[0]['transform']
+            copy_img = np.copy(img)
             img = transform(image=img)['image']
             print(f'img.shape: {img.shape}')
             test_img = torch.from_numpy(img).unsqueeze(0).unsqueeze(0).to(device).float()
@@ -65,40 +67,39 @@ def make_prediction(img, model_architecture):
                 preds = preds.squeeze(0).squeeze(0).squeeze(0).cpu().numpy()
             model.train()
 
-            if transform is not None:
-                transformed = transform(image=img)
-                img = transformed['image']
+            # if transform is not None:
+            #     transformed = transform(image=img)
+            #     img = transformed['image']
 
             negative_preds = 1.0 - preds
 
-            overlapped_preds = np.stack((img,) * 3, axis=-1)
-            overlapped_preds[..., 2] = img * negative_preds
-            overlapped_preds[..., 0] = img * negative_preds
+            overlapped_preds = np.stack((copy_img,) * 3, axis=-1)
+            overlapped_preds[..., 2] = copy_img * negative_preds
+            overlapped_preds[..., 0] = copy_img * negative_preds
 
             return overlapped_preds, preds
 
         case 'ResUNET':
             model = models[1]["model"]
             transform = models[1]["transform"]
-            img = transform(image=img)['image']
-            print(f'img.shape: {img.shape}')
-            preds = split_and_process_img(img, 256, 256, model=model, transform=transform, device=device)
+            batch = np.repeat(img[:, :, np.newaxis], 3, axis=2)
+            batch = transform(image=batch)['image']
+            batch = np.expand_dims(batch, axis=0)
+            preds = split_and_process_loader_batch(batch, 256, 256, model=model, device=device)
+            preds = preds.squeeze(0).squeeze(0)
 
             # from grayscale to rgb
-            img = np.repeat(img[:, :, np.newaxis], 3, axis=2)
-            preds = np.repeat(preds[:, :, np.newaxis], 3, axis=2)
-
-            if transform is not None:
-                transformed = transform(image=img)
-                # img = transformed['image']
+            copy_preds = np.repeat(preds[:, :, np.newaxis], 3, axis=2)
 
             img_copy = np.copy(img)
+            img_copy = np.repeat(img_copy[:, :, np.newaxis], 3, axis=2)
+
             negative_preds = 1.0 - preds
             overlapped_preds = img_copy
-            overlapped_preds[..., 1] = img_copy[..., 1] * negative_preds[..., 1]
-            overlapped_preds[..., 2] = img_copy[..., 2] * negative_preds[..., 2]
+            overlapped_preds[..., 1] = img_copy[..., 1] * negative_preds
+            overlapped_preds[..., 2] = img_copy[..., 2] * negative_preds
 
-            return overlapped_preds, preds
+            return overlapped_preds, copy_preds
 
         case _:
             raise NotImplementedError(f'Unknown model architecture: {model_architecture}')
